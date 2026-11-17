@@ -38,6 +38,15 @@ const defaults = {
   ],
   media: []
 };
+const cakeTags = {
+  'classic-vanilla': { flavours: ['Vanilla', 'Lemon'], cakeType: 'Buttercream cake', color: 'Cream' },
+  'chocolate-velvet': { flavours: ['Chocolate'], cakeType: 'Buttercream cake', color: 'Chocolate' },
+  'strawberry-cloud': { flavours: ['Strawberry', 'Vanilla'], cakeType: 'Celebration cake', color: 'Pink' },
+  'cupcake-dozen': { flavours: ['Vanilla', 'Chocolate'], cakeType: 'Cupcakes', color: 'Mixed colours' },
+  'celebration-tier': { flavours: ['Vanilla', 'Chocolate', 'Red velvet'], cakeType: 'Tiered cake', color: 'Custom colours' },
+  'caramel-bliss': { flavours: ['Caramel', 'Vanilla'], cakeType: 'Buttercream cake', color: 'Caramel' }
+};
+function enrichCakes(cakes) { return cakes.map(c => ({ ...(cakeTags[c.id] || {}), ...c })); }
 const dbPath = path.join(dataDir, 'store.json');
 if (pool) {
   await pool.query('CREATE TABLE IF NOT EXISTS sonia_cakes_store (id integer PRIMARY KEY CHECK (id = 1), payload jsonb NOT NULL)');
@@ -70,7 +79,7 @@ const imageUpload = multer({ storage: r2 ? multer.memoryStorage() : multer.diskS
 
 app.get('/api/health', (_req, res) => res.json({ ok: true }));
 app.get('/api/config', (_req, res) => res.json({ whatsappNumber: process.env.WHATSAPP_NUMBER || '' }));
-app.get('/api/catalog', async (_req, res) => { const data = await db(); res.json({ cakes: data.cakes.filter(x => x.available !== false), academy: data.academy.filter(x => x.available !== false), media: data.media }); });
+app.get('/api/catalog', async (_req, res) => { const data = await db(); res.json({ cakes: enrichCakes(data.cakes).filter(x => x.available !== false), academy: data.academy.filter(x => x.available !== false), media: data.media }); });
 app.post('/api/orders', async (req, res) => {
   const parsed = orderSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: 'Please check the order details and try again.', details: parsed.error.flatten() });
@@ -92,7 +101,7 @@ app.post('/api/admin/login', async (req, res) => {
   if (!emailOk || !passwordOk) return res.status(401).json({ error: 'Email or password is incorrect.' });
   res.json({ token: jwt.sign({ email: email.toLowerCase(), role: 'admin' }, process.env.JWT_SECRET, { expiresIn: '12h' }), email });
 });
-app.get('/api/admin/data', admin, async (_req, res) => { const data = await db(); res.json(data); });
+app.get('/api/admin/data', admin, async (_req, res) => { const data = await db(); res.json({ ...data, cakes: enrichCakes(data.cakes) }); });
 app.patch('/api/admin/orders/:id', admin, async (req, res) => { const data = await db(); const item = data.orders.find(x => x.id === req.params.id); if (!item) return res.status(404).json({ error: 'Order not found.' }); item.status = req.body.status; await save(data); res.json(item); });
 app.post('/api/admin/cakes', admin, async (req, res) => { const data = await db(); const cake = { id: crypto.randomUUID(), ...req.body, price: Number(req.body.price), available: true }; data.cakes.unshift(cake); await save(data); res.status(201).json(cake); });
 app.patch('/api/admin/cakes/:id', admin, async (req, res) => { const data = await db(); const item = data.cakes.find(x => x.id === req.params.id); if (!item) return res.status(404).json({ error: 'Cake not found.' }); Object.assign(item, req.body, { price: Number(req.body.price ?? item.price) }); await save(data); res.json(item); });
